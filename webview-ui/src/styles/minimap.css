@@ -1,0 +1,44 @@
+.minimap__container{
+    position: absolute;
+    left: 0;
+    top: 0;
+    min-width: 20px;
+    /* min-height: 100px; */
+    z-index: 50;
+    border-right: 2px solid var(--hover);
+    overflow: hidden;
+    height: 100%;
+}
+
+.minimap__size{
+    position: relative;
+    z-index: 5;
+    border-bottom: 2px solid var(--hover);
+}
+
+.minimap__viewer{
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    z-index: 50;
+    border: 1px solid var(--secondary-color );
+    background-color: rgb(127, 127, 127, 0.2);
+    mix-blend-mode: normal;
+}
+
+.minimap__content{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    transform-origin: 0 0;
+    border: 1px solid white;
+}
+
+.minimap__content > * {
+    background-color: var(--primary-color) !important;
+}
