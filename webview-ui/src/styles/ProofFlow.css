@@ -338,4 +338,11 @@
   #ProofFlowEditor {
     border-bottom: 0.5px solid var(--hover);
     color: var(--text-color);
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    margin-bottom: 50%;
+  }
+
+  .hovertooltip {
+    /* Hi lars can u make this nice smiley face :) */
   }

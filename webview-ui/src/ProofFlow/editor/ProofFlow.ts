@@ -1,29 +1,26 @@
 import { Schema, Node } from "prosemirror-model";
 import { CodeMirrorView } from "../codemirror/codemirrorview.ts";
 import type { GetPos } from "../codemirror/types.ts";
-import { ProofFlowSchema } from "./proofflowschema.ts";
+import { ProofFlowSchema, ProofStatus } from "./proofFlowSchema.ts";
 import {
   EditorState,
   EditorStateConfig,
   Transaction,
   Selection,
+  NodeSelection,
 } from "prosemirror-state";
 import { DirectEditorProps, EditorView } from "prosemirror-view";
 import { ProofFlowPlugins } from "./plugins.ts";
 import { mathSerializer } from "@benrbray/prosemirror-math";
 // import { AreaType } from "../parser/area.ts";
 import { ButtonBar } from "./ButtonBar.ts";
-
-import { basicSetup } from "codemirror";
 import { linter } from "@codemirror/lint";
-//import { javascript } from "@codemirror/lang-javascript";
 
 import { applyGlobalKeyBindings } from "../commands/shortcuts";
 // import { Area } from "../parser/area.ts";
 import { UserMode, handleUserModeSwitch } from "../UserMode/userMode.ts";
 import { AcceptedFileType } from "../parser/accepted-file-types.ts";
 import { Minimap } from "../minimap.ts";
-import { createSettings } from "../../main.ts";
 import {
   Area,
   AreaType,
@@ -35,28 +32,33 @@ import {
 } from "./ProofFlowDocument.ts";
 
 import { Parser, SimpleParser } from "../parser/parser.ts";
-import {
-  CoqMDOutput,
-  CoqMDParser,
-  CoqOutput,
-  CoqParser,
-  LeanOutput,
-  LeanParser,
-} from "../parser/parsers.ts";
+import { CoqMDParser, CoqParser, LeanParser } from "../parser/parsers.ts";
+import { CoqMDOutput, CoqOutput, LeanOutput } from "../parser/outputconfigs.ts";
 import { LSPClientHandler } from "../lspClient/lspClientHandler.ts";
 import { DiagnosticsMessageData } from "../lspClient/models.ts";
 import {
-  ProofflowLSPClient,
-  ProofflowLSPClientFileType,
-} from "../lspClient/ProofflowLSPClient.ts";
-//import { autocomplete } from "../codemirror/extensions/autocomplete.ts";
-//import { wordHover } from "../codemirror/extensions/hovertooltip.ts";
+  ProofFlowLSPClientFileType,
+} from "../lspClient/ProofFlowLSPClient.ts";
 import { reloadColorScheme } from "../settings/updateColors.ts";
+import { markdownToRendered } from "../commands/helpers.ts";
+import { basicSetupNoHistory } from "../codemirror/basicSetupNoHistory.ts";
+import { inputProof } from "../commands/helpers.ts";
+import { ProofFlowSaver } from "../fileHandlers/proofFlowSaver.ts";
+import { adjustLeftDivWidth } from "../../main.ts";
+import { LSPClientManager } from "../lspClient/lspClientManager.ts";
 // CSS
+
+export type ProofFlowOptions = {
+  editorElem: HTMLElement;
+  containerElem: HTMLElement;
+
+  fileSaver?: ProofFlowSaver;
+  lspManager?: LSPClientManager;
+};
 
 export class ProofFlow {
   private _editorElem: HTMLElement; // The HTML element that serves as the editor container
-  private _contentElem: HTMLElement; // The HTML element that contains the initial content for the editor
+  private _containerElem: HTMLElement; // The HTML element that contains the initial content for the editor
   private _schema: Schema = ProofFlowSchema; // The schema for the editor
   private editorStateConfig: EditorStateConfig = {
     schema: ProofFlowSchema,
@@ -65,39 +67,50 @@ export class ProofFlow {
 
   private editorView: EditorView; // The view of the editor
 
+  private fileSaver?: ProofFlowSaver;
+
   private userMode: UserMode = UserMode.Student; // The teacher mode of the editor
-  private fileName: string = "file.txt";
+  public fileName: string = "file.mv";
+
+  private _lspPath: string = "";
 
   // static filePath: string = "file.text";
-  static fileType: AcceptedFileType = AcceptedFileType.Unknown;
+  private fileType: AcceptedFileType = AcceptedFileType.Unknown;
 
   private minimap: Minimap | null = null;
 
   private removeGlobalKeyBindings: () => void;
 
-  private pfDocument: ProofFlowDocument = new ProofFlowDocument([]);
+  private _pfDocument: ProofFlowDocument = new ProofFlowDocument(
+    this.fileName,
+    [],
+  );
 
-  private outputConfig: OutputConfig | undefined = undefined;
+  private outputConfig?: OutputConfig;
 
-  private lastUpdate: Date = new Date();
-  private lastTransaction: Date = new Date();
+  private lastUpdate?: number;
+  private lastTransaction?: number;
 
-  private updateTimeoutID: NodeJS.Timeout = undefined!;
+  private updateTimeoutID?: NodeJS.Timeout;
   private msTypingBuffer = 250;
 
   private msMaxUpdateTime = 1000;
 
   private lspClient?: LSPClientHandler;
+  private lspManager?: LSPClientManager;
 
   /**
    * Represents the ProofFlow class.
    * @constructor
    * @param {HTMLElement} editorElem - The HTML element that serves as the editor container.
-   * @param {HTMLElement} contentElem - The HTML element that contains the initial content for the editor.
+   * @param {HTMLElement} containerElem - The HTML element that contains the initial content for the editor.
    */
-  constructor(editorElem: HTMLElement, contentElem: HTMLElement) {
-    this._editorElem = editorElem; // Set the editor element
-    this._contentElem = contentElem; // Set the content element
+  constructor(options: ProofFlowOptions) {
+    this._editorElem = options.editorElem; // Set the editor element
+    this._containerElem = options.containerElem; // Set the container element
+    this.fileSaver = options.fileSaver;
+    this.lspManager = options.lspManager;
+
     // Create the editor
     this.editorView = this.createEditorView();
 
@@ -105,10 +118,7 @@ export class ProofFlow {
       this.lspClient?.shutdown();
     });
     // Apply global key bindings
-    this.removeGlobalKeyBindings = applyGlobalKeyBindings(
-      this.editorView,
-      this.minimap!,
-    );
+    this.removeGlobalKeyBindings = applyGlobalKeyBindings(this.editorView);
   }
 
   /**
@@ -127,20 +137,21 @@ export class ProofFlow {
         this.editorView.updateState(this.editorView.state.apply(tr));
         if (tr.docChanged) {
           this.updateWithBuffer(tr.doc);
+          this.lastTransaction = Date.now();
         }
       },
 
       // Define a node view for the custom code mirror node as a prop
       nodeViews: {
         code_mirror: (node: Node, view: EditorView, getPos: GetPos) =>
-          new CodeMirrorView({
+          new CodeMirrorView(this, {
             node,
             view,
             getPos,
             cmOptions: {
               extensions: [
                 // will be changed, and later code from basic setup will be added to the codebase
-                basicSetup,
+                basicSetupNoHistory,
                 linter(null),
                 // javascript(),
                 // autocomplete(this),
@@ -165,37 +176,43 @@ export class ProofFlow {
 
     // Create the button bar and render it
     const buttonBar = new ButtonBar(this._schema, editorView);
-    buttonBar.render(this._editorElem);
+    buttonBar.render(this._containerElem);
 
     return editorView;
   }
 
   updateWithBuffer(doc: Node) {
-    let now = new Date();
-    if (now.getTime() - this.lastTransaction.getTime() >= this.msTypingBuffer) {
-      clearTimeout(this.updateTimeoutID);
-      this.updateProofFlowDocument(doc);
-    } else if (
-      now.getTime() - this.lastUpdate.getTime() <
-      this.msMaxUpdateTime
-    ) {
+    let now = Date.now();
+    if (!this.lastUpdate) this.lastUpdate = now;
+    if (!this.lastTransaction) this.lastTransaction = now;
+
+    if (now - this.lastUpdate > this.msMaxUpdateTime) {
+      if (!this.updateTimeoutID)
+        this.updateTimeoutID = setTimeout(
+          () => this.updateProofFlowDocument(doc),
+          this.msMaxUpdateTime,
+        );
+      return;
+    }
+
+    if (now - this.lastTransaction <= this.msTypingBuffer) {
       clearTimeout(this.updateTimeoutID);
       this.updateTimeoutID = setTimeout(
         () => this.updateProofFlowDocument(doc),
         this.msMaxUpdateTime,
       );
+      return;
     }
-    this.lastTransaction = now;
   }
 
   updateProofFlowDocument(doc: Node) {
     clearTimeout(this.updateTimeoutID);
-    let parsed = docToPFDocument(doc);
+    let parsed = docToPFDocument(this.fileName, doc);
     if (this.outputConfig) parsed.outputConfig = this.outputConfig;
-    if (parsed.toString() === this.pfDocument.toString()) return;
-    console.log(parsed);
-    this.pfDocument = parsed;
-    this.lastUpdate = new Date();
+    if (parsed.toString() === this._pfDocument.toString()) return;
+    this._pfDocument = parsed;
+    this.lastUpdate = undefined;
+    this.lastTransaction = undefined;
 
     this.lspClient?.didChange(parsed);
   }
@@ -222,32 +239,85 @@ export class ProofFlow {
 
       // Check for not null (TypeScript mandates)
       if (currentCodeMirror) {
-        console.log("Moving from codemirror");
         currentCodeMirror.blurInstance();
       }
     }
   }
 
+  public get pfDocument(): ProofFlowDocument {
+    this.updateProofFlowDocument(this.editorView.state.doc);
+    return this._pfDocument;
+  }
+
+  public findNode(
+    predicate: (node: Node, pos: number) => boolean,
+  ): [Node, number] | undefined {
+    let found: [Node, number] | undefined;
+    this.editorView.state.doc.descendants((node, pos) => {
+      if (predicate(node, pos)) found = [node, pos];
+      if (found) return false;
+    });
+    return found;
+  }
+
   public handleDiagnostics(message: DiagnosticsMessageData) {
     CodeMirrorView.resetDiagnostics();
     for (let diag of message.diagnostics) {
-      let res = this.pfDocument.getAreayByPosition(diag.range.start);
+      let res = this._pfDocument.getAreayByPosition(diag.range.start);
       if (!res) continue;
 
       let [area, start] = res;
       let end = area.getOffset(diag.range.end);
-      let found: [Node, number] | undefined;
-      this.editorView.state.doc.descendants((node, pos) => {
-        if (node.attrs.id === area.id) found = [node, pos];
-        if (found) return false;
-      });
+      let found = this.findNode((node, _) => node.attrs.id === area.id);
       if (!found) continue;
-
       let codemirror = CodeMirrorView.findByPos(found[1]);
       if (!codemirror) continue;
 
       codemirror.handleDiagnostic(diag, start, end!);
     }
+    this.setProofColors();
+  }
+
+  private setProofColors() {
+    // Previous input area node and its offset
+    let prevInput: Node | null = null;
+    let prevOffset: number;
+
+    // Iterate over all nodes in doc
+    this.getState().doc.descendants((node: Node, offset: number) => {
+      if (node.type.name != "code_mirror" && node.type.name != "input")
+        return true;
+
+      if (node.type.name == "input") {
+        // Save the node and offset
+        prevInput = node;
+        prevOffset = offset;
+
+        // Count the amount of diagnostics inside the input area
+        let diagnosticCount = 0;
+        node.descendants((node: Node, offset: number) => {
+          if (node.type.name != "code_mirror") return true;
+          let instance = CodeMirrorView.findByPos(offset);
+          if (instance == null) return false;
+          diagnosticCount += instance.diagnostics.length;
+        });
+
+        // If it is zero then set it to correct otherwise incorrect
+        if (diagnosticCount == 0) {
+          inputProof(node, ProofStatus.Correct, offset);
+        } else {
+          inputProof(node, ProofStatus.Incorrect, offset);
+        }
+        return false;
+      }
+
+      // If instance has QED error then set previous input to incorrect
+      let instance = CodeMirrorView.findByPos(offset);
+      if (instance == null) return true;
+      if (instance.isQEDError && prevInput != null) {
+        inputProof(prevInput, ProofStatus.Incorrect, prevOffset);
+      }
+    });
   }
 
   /**
@@ -257,56 +327,58 @@ export class ProofFlow {
    * @param fileType - The type of the file.
    */
   public async openFile(text: string, fileType: AcceptedFileType) {
-    ProofFlow.fileType = fileType;
+    this.fileType = fileType;
     text = text.replace(/\r/gi, ""); // Windows uses Carriage feeds but we don't like that.
 
     // Process the file content
     let parser: Parser;
-    let lspClientFileType: ProofflowLSPClientFileType;
-    switch (fileType) {
+    let lspClientFileType: ProofFlowLSPClientFileType;
+    switch (this.fileType) {
       case AcceptedFileType.Coq:
+        window.localStorage.setItem("currentLspType", "Coq");
         parser = CoqParser;
         this.outputConfig = CoqOutput;
         let proxy = parser as SimpleParser;
         proxy.defaultAreaType = AreaType.Code;
-        lspClientFileType = ProofflowLSPClientFileType.Coq;
+        lspClientFileType = ProofFlowLSPClientFileType.Coq;
         break;
       case AcceptedFileType.CoqMD:
         parser = CoqMDParser;
         this.outputConfig = CoqMDOutput;
-        lspClientFileType = ProofflowLSPClientFileType.Coq;
+        lspClientFileType = ProofFlowLSPClientFileType.Coq;
         break;
       case AcceptedFileType.Lean:
         parser = LeanParser;
         this.outputConfig = LeanOutput;
-        lspClientFileType = ProofflowLSPClientFileType.Lean;
+        lspClientFileType = ProofFlowLSPClientFileType.Lean;
         break;
       default:
         return;
     }
     let pfDocument = parser.parse(text);
+    pfDocument.uri = this.fileName;
     this.setProofFlowDocument(pfDocument);
 
-    this.lspClient = new ProofflowLSPClient(
-      this.fileName,
-      "ws://localhost:8080",
-      this.handleDiagnostics.bind(this),
-      lspClientFileType,
-    );
+    this.lspClient = this.lspManager?.getLSP(lspClientFileType);
+    if (!this.lspClient) {
+      console.log("No lsp found");
+      return;
+    }
+    this.lspClient.setDiagnosticsHandler(this.handleDiagnostics.bind(this));
     await this.lspClient.initialize();
     this.lspClient.initialized();
     this.lspClient.didOpen(pfDocument);
   }
 
   public setProofFlowDocument(pfDocument: ProofFlowDocument) {
-    this.pfDocument = pfDocument;
-    if (this.outputConfig) this.pfDocument.outputConfig = this.outputConfig;
+    this._pfDocument = pfDocument;
+    if (this.outputConfig) this._pfDocument.outputConfig = this.outputConfig;
     console.log("PF DOCUMENT IS BEING SET");
     console.log(pfDocument);
-    for (let area of this.pfDocument.areas) {
+    for (let area of this._pfDocument.areas) {
       switch (area.type) {
         case AreaType.Text:
-          this.createTextArea(area);
+          this.createTextArea(area, true);
           break;
         case AreaType.Code:
           this.createCodeArea(area);
@@ -360,7 +432,7 @@ export class ProofFlow {
       let node: Node;
       switch (innerArea.type) {
         case AreaType.Text:
-          node = this.createTextNode(innerArea);
+          node = this.createTextNode(innerArea, true);
           break;
         case AreaType.Code:
           node = this.createCodeNode(innerArea);
@@ -381,7 +453,6 @@ export class ProofFlow {
     let inputNode: Node = this._schema.node("input", { id: area.id }, [
       inputContentNode,
     ]);
-    console.log(inputNode);
     this.insertAtEnd(inputNode);
   }
 
@@ -405,7 +476,7 @@ export class ProofFlow {
       let node: Node;
       switch (innerArea.type) {
         case AreaType.Text:
-          node = this.createTextNode(innerArea);
+          node = this.createTextNode(innerArea, true);
           break;
         case AreaType.Code:
           node = this.createCodeNode(innerArea);
@@ -422,7 +493,7 @@ export class ProofFlow {
     // Create the content node
     let contentNode: Node = this._schema.node(
       "collapsible_content",
-      { visible: true },
+      { visible: false },
       contentNodes,
     );
 
@@ -443,13 +514,13 @@ export class ProofFlow {
    * @param text - The text content of the node.
    * @returns The created text node.
    */
-  private createTextNode(area: Area): Node {
+  private createTextNode(area: Area, render: boolean): Node {
     let textNode: Node = this._schema.node(
       "markdown",
       { id: area.id },
       area.content ? ProofFlowSchema.text(area.content) : undefined,
     );
-    return textNode;
+    return render ? markdownToRendered(textNode, this._schema) : textNode;
   }
 
   /**
@@ -487,8 +558,8 @@ export class ProofFlow {
    *
    * @param text - The text to be inserted in the text area.
    */
-  public createTextArea(area: Area): void {
-    let textNode = this.createTextNode(area);
+  public createTextArea(area: Area, render: boolean): void {
+    let textNode = this.createTextNode(area, render);
     this.insertAtEnd(textNode);
   }
 
@@ -525,18 +596,7 @@ export class ProofFlow {
    * Saves the file by creating a download link for the content and triggering a click event on it.
    */
   public saveFile() {
-    const result = this.pfDocument.toString();
-    const blob = new Blob([result], { type: "text" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = this.fileName;
-    document.body.appendChild(a);
-    a.click();
-
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    this.fileSaver?.save(this);
   }
 
   /**
@@ -544,35 +604,33 @@ export class ProofFlow {
    * and creating a new editor view.
    */
   public reset() {
-    this.lspClient?.didClose();
+    this.lspClient?.didClose(this.pfDocument);
     this.lspClient?.shutdown();
     this.lspClient = undefined;
 
     this.minimap?.destroy();
     this.removeGlobalKeyBindings();
 
+    CodeMirrorView.resetDiagnostics();
+    CodeMirrorView.instances = [];
+    CodeMirrorView.focused = null;
+
     // Remove all children from the editor element
     while (this._editorElem.firstChild != null) {
       this._editorElem.removeChild(this._editorElem.firstChild);
     }
 
-    // Remove all children from the content element
-    while (this._contentElem.firstChild != null) {
-      this._contentElem.removeChild(this._contentElem.firstChild);
-    }
+    // remove the buttonBar
+    this._containerElem.removeChild(document.getElementById("button-bar")!);
 
     // Create a new editor view
     this.editorView = this.createEditorView();
-    this.removeGlobalKeyBindings = applyGlobalKeyBindings(
-      this.editorView,
-      this.minimap!,
-    );
+    this.removeGlobalKeyBindings = applyGlobalKeyBindings(this.editorView);
 
-    createSettings();
-
-    // Ensure that the usermode and color scheme are loaded correctly.
+    // Ensure that the usermode and color scheme and size are loaded correctly.
     handleUserModeSwitch();
     reloadColorScheme();
+    adjustLeftDivWidth();
   }
 
   /**
@@ -606,5 +664,32 @@ export class ProofFlow {
       newUserMode === UserMode.Teacher ? "true" : "false",
     );
     handleUserModeSwitch();
+  }
+
+  public setLsp(path: string) {
+    this._lspPath = path;
+  }
+
+  /**
+   * Inserts the given string at the selection/cursor position.
+   *
+   * @param string - The string to insert.
+   */
+  async insertAtCursor(string: string) {
+    // Create a new transaction
+    let trans: Transaction = this.getState().tr;
+    // This does not work for math nodes
+    if (this.editorView.state.selection instanceof NodeSelection) {
+      return;
+    } else {
+      // Insert the text at the selection/cursor-position and update the editor state
+      trans = trans.insertText(string);
+      this.editorView.state = this.editorView.state.apply(trans);
+      this.editorView.updateState(this.editorView.state);
+    }
+  }
+
+  public switchMinimap() {
+    this.minimap?.switch();
   }
 }
