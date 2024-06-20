@@ -17,7 +17,7 @@ class VSCodeAPIWrapper {
     // context (i.e. VS Code development window or web browser)
     if (typeof acquireVsCodeApi === "function") {
       this.vsCodeApi = acquireVsCodeApi();
-    }
+    } 
   }
 
   /**
@@ -71,6 +71,10 @@ class VSCodeAPIWrapper {
       localStorage.setItem("vscodeState", JSON.stringify(newState));
       return newState;
     }
+  }
+  
+  public isVSCodeEnvironment(): boolean {
+    return this.vsCodeApi !== undefined;
   }
 }
 

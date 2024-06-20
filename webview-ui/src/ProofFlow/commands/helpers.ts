@@ -12,6 +12,7 @@ import { proofFlow } from "../../main";
 import { UserMode } from "../UserMode/userMode";
 import { ProofStatus } from "../editor/proofFlowSchema";
 import { getNextAreaId } from "../editor/ProofFlowDocument";
+import { vscode } from "../extension/vscode";
 
 /**
  * Represents the possible places where an insertion can occur.
@@ -329,4 +330,12 @@ export function toggleLineNumbers() {
     indexLine = -1;
   }
   visibleLine = !visibleLine;
+}
+
+/**
+ * Function to check if the current environment is a VSCode extension.
+ * @returns A boolean indicating whether the current environment is a VSCode extension.
+ */
+export function isVSCodeEnvironment(): boolean {
+  return vscode.isVSCodeEnvironment();
 }

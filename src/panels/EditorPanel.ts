@@ -100,7 +100,7 @@ export class EditorPanel {
   private _getWebviewContent(webview: Webview, extensionUri: Uri) {
 
     const preset = getUri(webview, extensionUri, ["webview-ui", "dist"]);
-    let html = /* PASTE HTML IN HERE */` <!doctype html>
+    let html = /* PASTE HTML IN HERE */`<!doctype html>
 <html lang="en">
 
 <head>
@@ -109,7 +109,7 @@ export class EditorPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
   <style id="dynamic-styles"></style>
-  <script type="module" crossorigin src="/assets/index-Bs4rtkM6.js"></script>
+  <script type="module" crossorigin src="/assets/index-DgNc22tY.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Cylx7uUi.css">
 </head>
 
@@ -119,9 +119,13 @@ export class EditorPanel {
 </body>
 
 </html>
+
+
+
+
+
 `;
     const adaptedHtml = html.replaceAll('href="/assets/', `href="${preset}/assets/`).replaceAll('src="/assets/', `src="${preset}/assets/`);
-    console.log(adaptedHtml);
     return adaptedHtml;
   }
 
@@ -168,10 +172,12 @@ export class EditorPanel {
   // and log the file content to the console
   private _setOpenFileListener() {
     console.log("Setting up open file listener...");
-      workspace.onDidOpenTextDocument((document) => {
-        console.log(document.getText);
-        
-      }, 
+      window.onDidChangeActiveTextEditor((editor) => {
+        this._panel.webview.postMessage({
+          command: "openFile",
+          content: editor?.document.getText()
+        });
+      },
       undefined,
       this._disposables);
   }
