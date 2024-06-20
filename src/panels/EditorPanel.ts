@@ -1,4 +1,4 @@
-import { Disposable, Webview, WebviewPanel, window, Uri, ViewColumn, workspace, ExtensionContext } from "vscode";
+import { Disposable, Webview, WebviewPanel, window, Uri, ViewColumn, workspace, commands } from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 
@@ -35,6 +35,9 @@ export class EditorPanel {
 
     // Set an event listener to listen for messages passed from the webview context
     this._setWebviewMessageListener(this._panel.webview);
+
+    // Set the open file listerener
+    this._setOpenFileListener();
   }
 
   /**
@@ -97,28 +100,29 @@ export class EditorPanel {
   private _getWebviewContent(webview: Webview, extensionUri: Uri) {
 
     const preset = getUri(webview, extensionUri, ["webview-ui", "dist"]);
-
-    return /*PASTE HTML FROM "webview-ui/dist/index.html HERE. THEN INSERT ${preset} before ALL file paths*/  `
-      
-    <!doctype html>
-    <html lang="en">
+    let html = /* PASTE HTML IN HERE */` <!doctype html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="${preset}/assets/ProofFlow_logo_rounded_rectacngle_wbackground-DOKaJZtG.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/ProofFlow_logo_rounded_rectacngle_wbackground-DOKaJZtG.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
-  <script type="module" crossorigin src="${preset}/assets/index-DF0PcWS4.js"></script>
-  <link rel="stylesheet" crossorigin href="${preset}/assets/index-DDT8T7B-.css">
+  <style id="dynamic-styles"></style>
+  <script type="module" crossorigin src="/assets/index-Bs4rtkM6.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Cylx7uUi.css">
 </head>
 
 
 <body>
-    
+
 </body>
 
-</html>  
-    `;
+</html>
+`;
+    const adaptedHtml = html.replaceAll('href="/assets/', `href="${preset}/assets/`).replaceAll('src="/assets/', `src="${preset}/assets/`);
+    console.log(adaptedHtml);
+    return adaptedHtml;
   }
 
   /**
@@ -159,4 +163,16 @@ export class EditorPanel {
       window.showInformationMessage('File saved.');
     }
     }
+
+  // Set up an event listener to listen for when a file is opened
+  // and log the file content to the console
+  private _setOpenFileListener() {
+    console.log("Setting up open file listener...");
+      workspace.onDidOpenTextDocument((document) => {
+        console.log(document.getText);
+        
+      }, 
+      undefined,
+      this._disposables);
+  }
 }

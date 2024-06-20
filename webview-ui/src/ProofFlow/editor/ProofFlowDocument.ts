@@ -1,4 +1,5 @@
 import { Node } from "prosemirror-model";
+import { CoqMDOutput } from "../parser/outputconfigs";
 
 export {
   AreaType,
@@ -90,7 +91,6 @@ class Area {
   }
 
   getOffset(pos: Position): number | undefined {
-    console.log(this.range, pos);
     if (!this.range?.contains(pos)) return undefined;
 
     let lines = this.content.split("\n");
@@ -187,9 +187,12 @@ const NOPConfig: OutputConfig = {
 //TODO: Incorporate handling the index mapping here, this is a big task and should be done carefully.
 class ProofFlowDocument {
   areas: Area[];
-  private _outputConfig: OutputConfig = NOPConfig;
+  private _outputConfig: OutputConfig = CoqMDOutput;
 
-  constructor(areas: Area[]) {
+  public uri: string;
+
+  constructor(uri: string, areas: Area[]) {
+    this.uri = uri;
     this.areas = areas;
   }
 
@@ -394,8 +397,8 @@ class ProofFlowDocument {
   }
 }
 
-function docToPFDocument(doc: Node): ProofFlowDocument {
-  let pfDocument = new ProofFlowDocument([]);
+function docToPFDocument(uri: string, doc: Node): ProofFlowDocument {
+  let pfDocument = new ProofFlowDocument(uri, []);
   if (doc.type.name !== "doc") {
     console.error(
       "docToPFDocument received other node, expected 'doc' received '%s'",
