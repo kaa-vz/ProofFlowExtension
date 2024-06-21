@@ -32,13 +32,21 @@ import {
 } from "./ProofFlowDocument.ts";
 
 import { Parser, SimpleParser } from "../parser/parser.ts";
-import { CoqMDParser, CoqParser, LeanParser } from "../parser/parsers.ts";
-import { CoqMDOutput, CoqOutput, LeanOutput } from "../parser/outputconfigs.ts";
+import {
+  CoqMDParser,
+  CoqParser,
+  LeanParser,
+  PureLeanParser,
+} from "../parser/parsers.ts";
+import {
+  CoqMDOutput,
+  CoqOutput,
+  LeanOutput,
+  PureLeanOutput,
+} from "../parser/outputconfigs.ts";
 import { LSPClientHandler } from "../lspClient/lspClientHandler.ts";
 import { DiagnosticsMessageData } from "../lspClient/models.ts";
-import {
-  ProofFlowLSPClientFileType,
-} from "../lspClient/ProofFlowLSPClient.ts";
+import { ProofFlowLSPClientFileType } from "../lspClient/ProofFlowLSPClient.ts";
 import { reloadColorScheme } from "../settings/updateColors.ts";
 import { markdownToRendered } from "../commands/helpers.ts";
 import { basicSetupNoHistory } from "../codemirror/basicSetupNoHistory.ts";
@@ -71,8 +79,6 @@ export class ProofFlow {
 
   private userMode: UserMode = UserMode.Student; // The teacher mode of the editor
   public fileName: string = "file.mv";
-
-  private _lspPath: string = "";
 
   // static filePath: string = "file.text";
   private fileType: AcceptedFileType = AcceptedFileType.Unknown;
@@ -187,11 +193,12 @@ export class ProofFlow {
     if (!this.lastTransaction) this.lastTransaction = now;
 
     if (now - this.lastUpdate > this.msMaxUpdateTime) {
-      if (!this.updateTimeoutID)
+      if (!this.updateTimeoutID) {
         this.updateTimeoutID = setTimeout(
           () => this.updateProofFlowDocument(doc),
           this.msMaxUpdateTime,
         );
+      }
       return;
     }
 
@@ -209,10 +216,11 @@ export class ProofFlow {
     clearTimeout(this.updateTimeoutID);
     let parsed = docToPFDocument(this.fileName, doc);
     if (this.outputConfig) parsed.outputConfig = this.outputConfig;
-    if (parsed.toString() === this._pfDocument.toString()) return;
-    this._pfDocument = parsed;
     this.lastUpdate = undefined;
     this.lastTransaction = undefined;
+    this.updateTimeoutID = undefined;
+    if (parsed.toString() === this._pfDocument.toString()) return;
+    this._pfDocument = parsed;
 
     this.lspClient?.didChange(parsed);
   }
@@ -273,7 +281,13 @@ export class ProofFlow {
       let codemirror = CodeMirrorView.findByPos(found[1]);
       if (!codemirror) continue;
 
-      codemirror.handleDiagnostic(diag, start, end!);
+      if (end == undefined) {
+        // This should not happen
+        console.error("End is mapped to undefined in handleDiagnostics");
+        continue;
+      }
+
+      codemirror.handleDiagnostic(diag, start, end);
     }
     this.setProofColors();
   }
@@ -282,6 +296,7 @@ export class ProofFlow {
     // Previous input area node and its offset
     let prevInput: Node | null = null;
     let prevOffset: number;
+    let focusedInstance: any;
 
     // Iterate over all nodes in doc
     this.getState().doc.descendants((node: Node, offset: number) => {
@@ -295,11 +310,14 @@ export class ProofFlow {
 
         // Count the amount of diagnostics inside the input area
         let diagnosticCount = 0;
-        node.descendants((node: Node, offset: number) => {
+        node.descendants((node: Node, childOffset: number) => {
           if (node.type.name != "code_mirror") return true;
-          let instance = CodeMirrorView.findByPos(offset);
+          let instance = CodeMirrorView.findByPos(offset + childOffset + 1);
+          if (instance?.cm.hasFocus) {
+            focusedInstance = instance;
+          }
           if (instance == null) return false;
-          diagnosticCount += instance.diagnostics.length;
+          if (instance.isError) diagnosticCount++;
         });
 
         // If it is zero then set it to correct otherwise incorrect
@@ -318,6 +336,9 @@ export class ProofFlow {
         inputProof(prevInput, ProofStatus.Incorrect, prevOffset);
       }
     });
+    if (focusedInstance != null) {
+      focusedInstance.forceforwardSelection();
+    }
   }
 
   /**
@@ -348,8 +369,15 @@ export class ProofFlow {
         lspClientFileType = ProofFlowLSPClientFileType.Coq;
         break;
       case AcceptedFileType.Lean:
-        parser = LeanParser;
-        this.outputConfig = LeanOutput;
+        if (text.indexOf("import VersoProofFlow") !== -1) {
+          parser = LeanParser;
+          this.outputConfig = LeanOutput;
+        } else {
+          parser = PureLeanParser;
+          this.outputConfig = PureLeanOutput;
+          let proxy = parser as SimpleParser;
+          proxy.defaultAreaType = AreaType.Code;
+        }
         lspClientFileType = ProofFlowLSPClientFileType.Lean;
         break;
       default:
@@ -631,6 +659,11 @@ export class ProofFlow {
     handleUserModeSwitch();
     reloadColorScheme();
     adjustLeftDivWidth();
+    const on = localStorage.getItem("minimap") === "true";
+
+    if (!on) {
+      this.switchMinimap();
+    }
   }
 
   /**
@@ -664,10 +697,6 @@ export class ProofFlow {
       newUserMode === UserMode.Teacher ? "true" : "false",
     );
     handleUserModeSwitch();
-  }
-
-  public setLsp(path: string) {
-    this._lspPath = path;
   }
 
   /**

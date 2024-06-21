@@ -11,8 +11,8 @@ import { SettingsOverlay } from "./ProofFlow/settings/settings.ts";
 import { handleUserModeSwitch } from "./ProofFlow/UserMode/userMode.ts";
 import { WebApplicationSaver } from "./ProofFlow/fileHandlers/webApplicationSaver.ts";
 import { WebApplicationLSPManager } from "./ProofFlow/lspClient/webApplicationManager.ts";
-import { ProofFlowSaver } from "./ProofFlow/fileHandlers/proofFlowSaver.ts";
 import { isVSCodeEnvironment } from "./ProofFlow/commands/helpers.ts";
+import { ProofFlowSaver } from "./ProofFlow/fileHandlers/proofFlowSaver.ts";
 import { VSCodeSaver } from "./ProofFlow/fileHandlers/vscodeSaver.ts";
 const app = document.createElement("div");
 app.id = "app";
@@ -108,7 +108,7 @@ export function readSingleFile(e: Event) {
 
   // Event listener to process the file content
   reader.onloadend = (readerEvent: ProgressEvent<FileReader>) => {
-    if (readerEvent?.target?.result) {
+    if (typeof readerEvent?.target?.result === "string") {
       // Get the result from the reader event
       const result = readerEvent.target.result.toString();
       proofFlow.reset();

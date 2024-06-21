@@ -20,6 +20,8 @@ import { LSPDiagnostic } from "../lspClient/models.ts";
 import { ProofFlow } from "../editor/ProofFlow.ts";
 import { wordHover } from "./extensions/hovertooltip.ts";
 
+type Severity = "hint" | "info" | "warning" | "error";
+
 const computeChange = (
   oldVal: string,
   newVal: string,
@@ -64,6 +66,7 @@ export class CodeMirrorView implements NodeView {
   updating = false;
   diagnostics: Diagnostic[] = new Array();
   isQEDError = false;
+  isError = false;
   proofflow: ProofFlow;
 
   static instances: CodeMirrorView[] = [];
@@ -191,6 +194,14 @@ export class CodeMirrorView implements NodeView {
     }
 
     CodeMirrorView.focused = this;
+  }
+
+  /**
+   * Method to move the cursor to the ProseMirrocr editor
+   */
+  forceforwardSelection() {
+    this.cm.focus();
+    this.forwardSelection();
   }
 
   /**
@@ -384,6 +395,7 @@ export class CodeMirrorView implements NodeView {
     CodeMirrorView.instances.forEach((instance) => (instance.diagnostics = []));
     CodeMirrorView.instances.forEach((instance) => {
       instance.isQEDError = false;
+      instance.isError = false;
       let tr = setDiagnostics(instance.cm.state, []);
       instance.cm.dispatch(tr);
     });
@@ -395,10 +407,28 @@ export class CodeMirrorView implements NodeView {
   }
 
   handleDiagnostic(diag: LSPDiagnostic, start: number, end: number) {
+    let severity: Severity;
+    switch (diag.severity) {
+      case 1:
+        severity = "error";
+        break;
+      case 2:
+        severity = "warning";
+        break;
+      case 3:
+        severity = "info";
+        break;
+      case 4:
+        severity = "hint";
+        break;
+      default:
+        severity = "error";
+        break;
+    }
     let diagnostic: Diagnostic = {
       from: start,
       to: end,
-      severity: "error",
+      severity: severity,
       message: diag.message,
     };
     this.diagnostics.push(diagnostic);
@@ -407,6 +437,7 @@ export class CodeMirrorView implements NodeView {
     if (this.checkQEDError(start)) {
       this.isQEDError = true;
     }
+    this.isError = true;
     this.cm.dispatch(tr);
   }
 }
