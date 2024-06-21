@@ -109,7 +109,7 @@ export class EditorPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
   <style id="dynamic-styles"></style>
-  <script type="module" crossorigin src="/assets/index-DgNc22tY.js"></script>
+  <script type="module" crossorigin src="/assets/index-LftzG2uR.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Cylx7uUi.css">
 </head>
 
@@ -155,6 +155,10 @@ export class EditorPanel {
     );
   }
 
+  /**
+   * Function to save the content of the webview to a file.
+   * @param content The content to be saved to a file
+   */
   async saveFile(content: string) {
     const uri = await window.showSaveDialog({
       saveLabel: 'Save File'
