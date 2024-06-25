@@ -12,7 +12,8 @@ import { proofFlow } from "../../main";
 import { UserMode } from "../UserMode/userMode";
 import { ProofStatus } from "../editor/proofFlowSchema";
 import { getNextAreaId } from "../editor/ProofFlowDocument";
-
+//import { mathSerializer } from "@benrbray/prosemirror-math";
+import { vscode } from "../extension/vscode";
 /**
  * Represents the possible places where an insertion can occur.
  */
@@ -140,8 +141,8 @@ export function insertUnder(
   } else if (isTextSelection) {
     // If the selection is a text selection, insert the specified node types under the current selection
     const textSel = sel as TextSelection;
-    const to =
-      sel.to + (sel.$from.parent.nodeSize - textSel.$from.parentOffset) - 1;
+    const to = textSel.$from.end();
+
     // Check if the to point is valid
     if (to > state.doc.nodeSize) {
       console.log("Invalid insertion point");
@@ -198,7 +199,6 @@ export function getContainingNode(sel: Selection): Node | undefined {
 export function allowedToInsert(state: EditorState): boolean {
   let selection = state.selection;
   let selectionType = getSelectionType(selection);
-  console.log(selection);
   let parent = getContainingNode(selection);
   let parentType = parent?.type.name;
   if (

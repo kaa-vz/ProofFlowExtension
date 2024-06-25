@@ -96,11 +96,7 @@ class Area {
     let lines = this.content.split("\n");
     let localLine = pos.line - this.range.start.line;
     if (localLine > 0) pos.character++;
-    return (
-      lines.slice(0, localLine).join("\n").length +
-      pos.character -
-      this.range.start.character
-    );
+    return lines.slice(0, localLine).join("\n").length + pos.character;
   }
 }
 

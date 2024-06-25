@@ -11,7 +11,9 @@ import { SettingsOverlay } from "./ProofFlow/settings/settings.ts";
 import { handleUserModeSwitch } from "./ProofFlow/UserMode/userMode.ts";
 import { WebApplicationSaver } from "./ProofFlow/fileHandlers/webApplicationSaver.ts";
 import { WebApplicationLSPManager } from "./ProofFlow/lspClient/webApplicationManager.ts";
-
+import { ProofFlowSaver } from "./ProofFlow/fileHandlers/proofFlowSaver.ts";
+import { VSCodeSaver } from "./ProofFlow/fileHandlers/vscodeSaver.ts";
+import { vscode } from "./ProofFlow/extension/vscode.ts";
 const app = document.createElement("div");
 app.id = "app";
 
@@ -28,17 +30,33 @@ const editor = document.createElement("div");
 editor.id = "editor";
 container.appendChild(editor);
 
+export let firefoxUsed =
+  navigator.userAgent.toLowerCase().indexOf("firefox") > -1;
+
+// Check if we are in a VSCode Extension Environment; base filesaver on that
+let fileSaver: any;
+if (vscode.isVSCodeEnvironment()) {
+  console.log("Running in VSCode Extension Environment");
+  fileSaver = new VSCodeSaver();
+} else {
+  console.log("Running in Web Application Environment");
+  fileSaver = new WebApplicationSaver();
+}
+
 // Create a new instance of the ProofFlow class
 let proofFlow: ProofFlow = new ProofFlow({
   editorElem: editor,
   containerElem: container,
-  fileSaver: new WebApplicationSaver(),
+  fileSaver: fileSaver,
   lspManager: new WebApplicationLSPManager(
     "ws://localhost:8080",
     window.localStorage,
   ),
 });
 
+if (vscode.isVSCodeEnvironment()) {
+  fileSaver.syncPfDoc(proofFlow);
+}
 // Create the settings overlay
 const settingsOverlay = new SettingsOverlay(container);
 
@@ -53,6 +71,7 @@ reloadColorScheme();
 
 // prevent user from leaving the page without saving
 window.onbeforeunload = function () {
+  console.log("onbeforeunlsdsdsdsoad");
   return "Are you sure you want to leave? You may have unsaved changes.";
 };
 
@@ -75,7 +94,16 @@ window.addEventListener("load", adjustLeftDivWidth);
  * Reads a single file from the input event and processes it.
  * @param e - The input event.
  */
-export function readSingleFile(e: Event) {
+export async function readSingleFile(e: Event) {
+  // Wait for user confirmation
+  const confirmed = await proofFlow.requestConfirm(
+    "Are you sure you want to load a new file, this will delete the current instance.",
+  );
+  if (!confirmed) {
+    proofFlow.resetButtonBar();
+    return;
+  }
+
   console.log("Reading file...");
   // Get the file list from the input event and check if it's empty
   if (!e.target) return;
@@ -96,7 +124,7 @@ export function readSingleFile(e: Event) {
 
   // Event listener to process the file content
   reader.onloadend = (readerEvent: ProgressEvent<FileReader>) => {
-    if (readerEvent?.target?.result) {
+    if (typeof readerEvent?.target?.result === "string") {
       // Get the result from the reader event
       const result = readerEvent.target.result.toString();
       proofFlow.reset();

@@ -20,6 +20,8 @@ import { LSPDiagnostic } from "../lspClient/models.ts";
 import { ProofFlow } from "../editor/ProofFlow.ts";
 import { wordHover } from "./extensions/hovertooltip.ts";
 
+type Severity = "hint" | "info" | "warning" | "error";
+
 const computeChange = (
   oldVal: string,
   newVal: string,
@@ -64,6 +66,7 @@ export class CodeMirrorView implements NodeView {
   updating = false;
   diagnostics: Diagnostic[] = new Array();
   isQEDError = false;
+  isError = false;
   proofflow: ProofFlow;
 
   static instances: CodeMirrorView[] = [];
@@ -141,6 +144,12 @@ export class CodeMirrorView implements NodeView {
               return false;
             },
           },
+          {
+            key: "Ctrl-Shift-m", // Stop linter from calling next diagnostics
+            run: () => {
+              return true;
+            },
+          },
         ]),
         cmExtensions,
         tabKeymap,
@@ -186,11 +195,22 @@ export class CodeMirrorView implements NodeView {
     }
 
     // Ensure only one cursor is active
-    if (CodeMirrorView.focused instanceof CodeMirrorView) {
+    if (
+      CodeMirrorView.focused instanceof CodeMirrorView &&
+      CodeMirrorView.focused != this
+    ) {
       CodeMirrorView.focused.blurInstance();
     }
 
     CodeMirrorView.focused = this;
+  }
+
+  /**
+   * Method to move the cursor to the ProseMirrocr editor
+   */
+  forceforwardSelection() {
+    this.cm.focus();
+    this.forwardSelection();
   }
 
   /**
@@ -384,21 +404,43 @@ export class CodeMirrorView implements NodeView {
     CodeMirrorView.instances.forEach((instance) => (instance.diagnostics = []));
     CodeMirrorView.instances.forEach((instance) => {
       instance.isQEDError = false;
+      instance.isError = false;
       let tr = setDiagnostics(instance.cm.state, []);
       instance.cm.dispatch(tr);
     });
   }
 
   checkQEDError(start: number) {
-    if (start != 0) return false;
-    return true;
+    let endFirstLine = this.cm.state.doc.line(1).length;
+    return start < endFirstLine;
   }
 
   handleDiagnostic(diag: LSPDiagnostic, start: number, end: number) {
+    // If the diagnostics gets handled when the doc does not have any
+    // characters at that position anymore, CodeMirror breaks
+    end = Math.min(end, this.cm.state.doc.length);
+    let severity: Severity;
+    switch (diag.severity) {
+      case 1:
+        severity = "error";
+        break;
+      case 2:
+        severity = "warning";
+        break;
+      case 3:
+        severity = "info";
+        break;
+      case 4:
+        severity = "hint";
+        break;
+      default:
+        severity = "error";
+        break;
+    }
     let diagnostic: Diagnostic = {
       from: start,
       to: end,
-      severity: "error",
+      severity: severity,
       message: diag.message,
     };
     this.diagnostics.push(diagnostic);
@@ -407,6 +449,7 @@ export class CodeMirrorView implements NodeView {
     if (this.checkQEDError(start)) {
       this.isQEDError = true;
     }
+    this.isError = true;
     this.cm.dispatch(tr);
   }
 }

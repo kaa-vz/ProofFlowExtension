@@ -16,6 +16,8 @@ export class EditorPanel {
   public static currentPanel: EditorPanel | undefined;
   private readonly _panel: WebviewPanel;
   private _disposables: Disposable[] = [];
+  private _pfDoc: string | undefined = undefined;
+  private _fileName: string | undefined = undefined;
 
   /**
    * The EditorPanel class private constructor (called only from the render method).
@@ -23,12 +25,12 @@ export class EditorPanel {
    * @param panel A reference to the webview panel
    * @param extensionUri The URI of the directory containing the extension
    */
-  private constructor(panel: WebviewPanel, extensionUri: Uri) {
+  private constructor(panel: WebviewPanel, extensionUri: Uri, pfDoc: string | undefined = undefined, fileName: string | undefined = undefined) {
     this._panel = panel;
 
     // Set an event listener to listen for when the panel is disposed (i.e. when the user closes
     // the panel or when the panel is closed programmatically)
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.onDidDispose(() => this.dispose(extensionUri), null, this._disposables);
 
     // Set the HTML content for the webview panel
     this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
@@ -38,6 +40,12 @@ export class EditorPanel {
 
     // Set the open file listerener
     this._setOpenFileListener();
+
+    this._setTabListener();
+    if (pfDoc !== undefined && fileName !== undefined) {
+      this._panel.webview.postMessage({command: "loadFile", content: pfDoc, text: fileName});
+    }
+    
   }
 
   /**
@@ -65,7 +73,7 @@ export class EditorPanel {
           enableScripts: true,
         }
       );
-
+    
       EditorPanel.currentPanel = new EditorPanel(panel, extensionUri);
     }
   }
@@ -73,19 +81,37 @@ export class EditorPanel {
   /**
    * Cleans up and disposes of webview resources when the webview panel is closed.
    */
-  public dispose() {
-    EditorPanel.currentPanel = undefined;
+  public async dispose(extensionUri: Uri) {
+    const response = await window.showWarningMessage("Are you sure you want to close ProofFlow? (You may have unsaved changes)", {modal: true}, "Yes", "No");
+    if (response === "No") {
+      //this._panel.webview.postMessage({command: "windowClosed"});
 
-    // Dispose of the current webview panel
-    this._panel.dispose();
+      const panel = window.createWebviewPanel(
+        "showEditor",
+        "ProofFlow Editor",
 
-    // Dispose of all disposables (i.e. commands) for the current webview panel
-    while (this._disposables.length) {
-      const disposable = this._disposables.pop();
-      if (disposable) {
-        disposable.dispose();
+        ViewColumn.One,
+        {
+          // Enable JavaScript in the webview
+          enableScripts: true,
+        });       
+        EditorPanel.currentPanel = new EditorPanel(panel, extensionUri, this._pfDoc, this._fileName);
+        //this._panel.webview.postMessage({command: "loadFile", content: this._pfDoc, text: this._fileName});
+    } else {
+      EditorPanel.currentPanel = undefined;
+
+      // Dispose of the current webview panel
+      this._panel.dispose();
+  
+      // Dispose of all disposables (i.e. commands) for the current webview panel
+      while (this._disposables.length) {
+        const disposable = this._disposables.pop();
+        if (disposable) {
+          disposable.dispose();
+        }
       }
     }
+   
   }
 
   /**
@@ -109,8 +135,8 @@ export class EditorPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
   <style id="dynamic-styles"></style>
-  <script type="module" crossorigin src="/assets/index-Bs4rtkM6.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Cylx7uUi.css">
+  <script type="module" crossorigin src="/assets/index-DRvKNuRz.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CRg8H5QZ.css">
 </head>
 
 
@@ -119,6 +145,8 @@ export class EditorPanel {
 </body>
 
 </html>
+
+
 `;
     const adaptedHtml = html.replaceAll('href="/assets/', `href="${preset}/assets/`).replaceAll('src="/assets/', `src="${preset}/assets/`);
     console.log(adaptedHtml);
@@ -143,7 +171,12 @@ export class EditorPanel {
             window.showInformationMessage(text);
             this.saveFile(content);
             return;
-
+          case "syncFile":
+            console.log("Synced: ", content);
+            console.log("Filename: ", text);
+            this._pfDoc = content;
+            this._fileName = text;
+            return;
         }
       },
       undefined,
@@ -175,4 +208,15 @@ export class EditorPanel {
       undefined,
       this._disposables);
   }
+
+  private _setTabListener() {
+    window.tabGroups.onDidChangeTabGroups((event) => {
+      console.log("Soemthing changeed");
+    });
+  }
 }
+
+
+
+
+
