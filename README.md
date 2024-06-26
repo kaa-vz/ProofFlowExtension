@@ -1,4 +1,6 @@
 # How to:
+## You can now install the extension by downloading the ".vsix" file and executing "code --install-extension proofflowcode-0.0.1.vsix"
+
 
 - Get most current ProofFlow source code from https://github.com/Moonlington/ProofFlow and copy it into "webview-ui" (perhaps replacing current code inside)
 - Run "npm run build:webview" from the main extension folder (proofflowcode).
