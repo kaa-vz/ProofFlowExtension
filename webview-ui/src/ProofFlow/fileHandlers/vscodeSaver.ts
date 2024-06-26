@@ -17,9 +17,11 @@ class VSCodeSaver implements ProofFlowSaver {
     });
   }
 
+  // Make sure the proofflow document is synced with VSCode,
+  // so the state can be restored when accidentally closed by the user
   syncPfDoc(pf: ProofFlow) {   
     sync(pf);
-    addLoadListener(pf);
+    addLoadFileListener(pf);
   }
 
 
@@ -35,7 +37,7 @@ function sync(pf: ProofFlow) {
   
 }
 
-function addLoadListener(pf: ProofFlow) {
+function addLoadFileListener(pf: ProofFlow) {
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.command === "loadFile") {
