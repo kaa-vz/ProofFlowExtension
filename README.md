@@ -8,5 +8,5 @@
 - Copy the HTML from "webview-ui/dist/index.html" into "src/panels/EditorPanel.ts" in the "html" variable
 - Compile the extension with "npm run compile" from the main folder again.
 
-You can now launch the extension with <F5>, and can then open a ProofFlow editor by running the command "ProofFlow: Open editor" in the VSCode terminal while the extension is active.
+You can now launch the extension with F5, and can then open a ProofFlow editor by running the command "ProofFlow: Open editor" in the VSCode terminal while the extension is active.
 
