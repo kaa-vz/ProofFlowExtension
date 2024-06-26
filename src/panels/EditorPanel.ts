@@ -41,7 +41,7 @@ export class EditorPanel {
     // Set the open file listerener
     this._setOpenFileListener();
 
-    this._setTabListener();
+    this._setViewListener();
     if (pfDoc !== undefined && fileName !== undefined) {
       this._panel.webview.postMessage({command: "loadFile", content: pfDoc, text: fileName});
     }
@@ -57,8 +57,10 @@ export class EditorPanel {
   public static render(extensionUri: Uri) {
     if (EditorPanel.currentPanel) {
       // If the webview panel already exists reveal it
+      console.log("Revealing panel");
       EditorPanel.currentPanel._panel.reveal(ViewColumn.One);
     } else {
+      console.log("Creating panel");
       // If a webview panel does not already exist create and show a new one
       const panel = window.createWebviewPanel(
         // Panel view type
@@ -209,9 +211,13 @@ export class EditorPanel {
       this._disposables);
   }
 
-  private _setTabListener() {
-    window.tabGroups.onDidChangeTabGroups((event) => {
-      console.log("Soemthing changeed");
+  // Set up an event listener to listen for when the view state changes
+  // a.k.a. for when the webview gets hidden or focused
+  private _setViewListener() {
+    this._panel.onDidChangeViewState((event) => {
+      if (this._panel.visible) {
+        this._panel.webview.postMessage({command: "loadFile", content: this._pfDoc, text: this._fileName});
+      }
     });
   }
 }

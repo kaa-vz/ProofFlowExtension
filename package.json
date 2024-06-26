@@ -2,7 +2,8 @@
   "name": "proofflowcode",
   "displayName": "ProofFlowCode",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.3",
+  "publisher": "ProofFlow SEP Group",
   "engines": {
     "vscode": "^1.89.0"
   },
