@@ -135,7 +135,7 @@ export class EditorPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
   <style id="dynamic-styles"></style>
-  <script type="module" crossorigin src="/assets/index-DRvKNuRz.js"></script>
+  <script type="module" crossorigin src="/assets/index-DjfFVf8C.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-CRg8H5QZ.css">
 </head>
 
