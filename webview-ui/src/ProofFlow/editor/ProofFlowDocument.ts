@@ -1,5 +1,6 @@
 import { Node } from "prosemirror-model";
 import { CoqMDOutput } from "../parser/outputconfigs";
+import { ProofStatus } from "./proofFlowSchema";
 
 export {
   AreaType,
@@ -138,6 +139,7 @@ class CollapsibleArea extends Area {
 
 class InputArea extends Area {
   subAreas: Area[] = [];
+  status: ProofStatus = ProofStatus.Unattempted;
   constructor() {
     super(null!, "");
     this.type = AreaType.Input;
@@ -186,6 +188,8 @@ class ProofFlowDocument {
   private _outputConfig: OutputConfig = CoqMDOutput;
 
   public uri: string;
+
+  public documentProgressed: boolean = false;
 
   constructor(uri: string, areas: Area[]) {
     this.uri = uri;
@@ -435,6 +439,7 @@ function nodeToArea(node: Node): Area | undefined {
           let area = nodeToArea(n);
           if (area) input.addArea(area);
         });
+      input.status = node.attrs.proof;
       area = input;
       break;
     case "collapsible":

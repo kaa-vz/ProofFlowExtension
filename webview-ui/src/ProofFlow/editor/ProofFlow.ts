@@ -8,6 +8,7 @@ import {
   Transaction,
   Selection,
   NodeSelection,
+  TextSelection,
 } from "prosemirror-state";
 import { DirectEditorProps, EditorView } from "prosemirror-view";
 import { ProofFlowPlugins } from "./plugins.ts";
@@ -109,6 +110,7 @@ export class ProofFlow {
 
   private undoTrackStack: Node[] = [];
   private redoTrackStack: Node[] = [];
+  public hasFileOpen: boolean = false;
 
   /**
    * Represents the ProofFlow class.
@@ -226,7 +228,7 @@ export class ProofFlow {
     this.updateTimeoutID = undefined;
     if (parsed.toString() === this._pfDocument.toString()) return;
     this._pfDocument = parsed;
-
+    console.log(parsed);
     this.lspClient?.didChange(parsed);
   }
 
@@ -297,19 +299,28 @@ export class ProofFlow {
     this.setProofColors();
   }
 
+  public handleProgress() {
+    this.pfDocument.documentProgressed = true;
+  }
+
   private setProofColors() {
     // Previous input area node and its offset
     let prevInput: Node | null = null;
     let prevOffset: number;
     let focusedInstance: CodeMirrorView | undefined;
 
+    // Offsets of correct input areas
+    // They can only be set at the end because otherwise it might go from correct to incorrect
+    let correctInputOffsets: Array<number> = [];
     // Iterate over all nodes in doc
     this.getState().doc.descendants((node: Node, offset: number) => {
+      // We only care about code_mirror instances that have doc as parent and
+      // Input areas
       if (node.type.name != "code_mirror" && node.type.name != "input")
         return true;
 
       if (node.type.name == "input") {
-        // Save the node and offset
+        // Save the node and offset of input area
         prevInput = node;
         prevOffset = offset;
 
@@ -318,29 +329,45 @@ export class ProofFlow {
         node.descendants((node: Node, childOffset: number) => {
           if (node.type.name != "code_mirror") return true;
           let instance = CodeMirrorView.findByPos(offset + childOffset + 1);
-          if (instance?.cm.hasFocus) {
+          // If the code_mirror instance has focus we should save it
+          if (instance == null) return false;
+          if (instance.cm.hasFocus) {
             focusedInstance = instance;
           }
-          if (instance == null) return false;
           if (instance.isError) diagnosticCount++;
         });
 
-        // If it is zero then set it to correct otherwise incorrect
+        // If there are zero errors then set input to correct otherwise incorrect
         if (diagnosticCount == 0) {
-          inputProof(node, ProofStatus.Correct, offset);
+          correctInputOffsets.push(offset);
         } else {
           inputProof(node, ProofStatus.Incorrect, offset);
         }
         return false;
+      } else if (node.type.name == "code_mirror") {
+        // If instance has QED error then set previous input to incorrect
+        let instance = CodeMirrorView.findByPos(offset);
+        if (instance == null) return true;
+        if (instance.isQEDError && prevInput != null) {
+          let correctIndex = correctInputOffsets.indexOf(prevOffset);
+          if (correctIndex > -1) {
+            correctInputOffsets.splice(correctIndex, 1);
+            inputProof(prevInput, ProofStatus.Incorrect, prevOffset);
+          }
+        }
+        // Reset previous input
+        prevInput = null;
       }
-
-      // If instance has QED error then set previous input to incorrect
-      let instance = CodeMirrorView.findByPos(offset);
-      if (instance == null) return true;
-      if (instance.isQEDError && prevInput != null) {
-        inputProof(prevInput, ProofStatus.Incorrect, prevOffset);
-      }
+      return true;
     });
+
+    // Set all correct inputs to correct only at the end.
+    correctInputOffsets.forEach((offset) => {
+      let node = this.getState().doc.nodeAt(offset);
+      if (node == null) return;
+      inputProof(node, ProofStatus.Correct, offset);
+    })
+
     if (focusedInstance != null) {
       if (firefoxUsed) {
         // Bug in Firefox that selectionchange is called when it is not supposed to
@@ -363,6 +390,7 @@ export class ProofFlow {
    * @param fileType - The type of the file.
    */
   public async openFile(text: string, fileType: AcceptedFileType) {
+    this.hasFileOpen = true;
     this.fileType = fileType;
     text = text.replace(/\r/gi, ""); // Windows uses Carriage feeds but we don't like that.
 
@@ -408,6 +436,7 @@ export class ProofFlow {
       return;
     }
     this.lspClient.setDiagnosticsHandler(this.handleDiagnostics.bind(this));
+    this.lspClient.setDocumentProgressHandler(this.handleProgress.bind(this));
     await this.lspClient.initialize();
     this.lspClient.initialized();
     this.lspClient.didOpen(pfDocument);
@@ -651,6 +680,8 @@ export class ProofFlow {
     this.lspClient?.shutdown();
     this.lspClient = undefined;
 
+    this.hasFileOpen = false;
+
     this.minimap?.destroy();
     this.removeGlobalKeyBindings();
 
@@ -820,6 +851,15 @@ export class ProofFlow {
   }
 
   /**
+   * Sets the outputConfig of the pfDocument
+   * @param outputConfig the output config
+   */
+  public setOutputConfig(outputConfig: OutputConfig) {
+    this.pfDocument.outputConfig = outputConfig;
+    this.outputConfig = outputConfig;
+  }
+
+  /**
    * Adds an undo track to the undo track stack.
    * If the current undo depth is already in the stack, it will not be added again.
    */
@@ -848,7 +888,7 @@ export class ProofFlow {
   }
 
   public requestConfirm(question: string): Promise<boolean> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _) => {
       // Button container showing below settings buttons, overlay over the editor
       // When clicking outside or on no, do not reset, if clicking on yes, reset
       const overlay = document.createElement("div");
@@ -887,9 +927,28 @@ export class ProofFlow {
     });
   }
 
+  /**
+   * Resets the button bar by destroying the existing button bar instance, creating a new one,
+   * and rendering it in the specified container element.
+   */
   public resetButtonBar() {
     this._buttonBar?.destroy();
     this._buttonBar = new ButtonBar(this._schema, this.editorView);
     this._buttonBar.render(this._containerElem);
+  }
+
+  /**
+   * Deselects all currently selected text in the editor.
+   */
+  public deselectAll() {
+    const tr = this.editorView.state.tr;
+    this.editorView.dispatch(
+      tr.setSelection(
+        new TextSelection(
+          this.editorView.state.doc.resolve(0),
+          this.editorView.state.doc.resolve(0),
+        ),
+      ),
+    );
   }
 }

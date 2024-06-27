@@ -14,6 +14,7 @@ import { WebApplicationLSPManager } from "./ProofFlow/lspClient/webApplicationMa
 import { ProofFlowSaver } from "./ProofFlow/fileHandlers/proofFlowSaver.ts";
 import { VSCodeSaver } from "./ProofFlow/fileHandlers/vscodeSaver.ts";
 import { vscode } from "./ProofFlow/extension/vscode.ts";
+import { renderAllMarkdown } from "./ProofFlow/plugins/markdown-extra.ts";
 const app = document.createElement("div");
 app.id = "app";
 
@@ -36,7 +37,7 @@ export let firefoxUsed =
 // Check if we are in a VSCode Extension Environment; base filesaver on that
 let fileSaver: any; // Need any type to be able to call syncPfDoc for the VSCodeSaver
 let inVSCode = vscode.isVSCodeEnvironment();
-fileSaver = inVSCode ? new VSCodeSaver() : new WebApplicationSaver(); 
+fileSaver = inVSCode ? new VSCodeSaver() : new WebApplicationSaver();
 
 // Create a new instance of the ProofFlow class
 let proofFlow: ProofFlow = new ProofFlow({
@@ -64,9 +65,13 @@ handleUserModeSwitch();
 // Update the color scheme
 reloadColorScheme();
 
+// Add event listener to the editor to render all markdown nodes
+editor.addEventListener("click", () => {
+  renderAllMarkdown(proofFlow);
+});
+
 // prevent user from leaving the page without saving
 window.onbeforeunload = function () {
-  console.log("onbeforeunlsdsdsdsoad");
   return "Are you sure you want to leave? You may have unsaved changes.";
 };
 
@@ -125,6 +130,7 @@ export async function readSingleFile(e: Event) {
       proofFlow.reset();
       proofFlow.setFileName(file.name);
       proofFlow.openFile(result, fileType);
+      handleUserModeSwitch();
     }
   };
 }
