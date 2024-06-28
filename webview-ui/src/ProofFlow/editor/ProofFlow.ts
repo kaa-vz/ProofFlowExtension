@@ -680,7 +680,7 @@ export class ProofFlow {
     this.lspClient?.didClose(this.pfDocument);
     this.lspClient?.shutdown();
     this.lspClient = undefined;
-
+    this.outputConfig = CoqMDOutput; 
     this.hasFileOpen = false;
 
     this.minimap?.destroy();

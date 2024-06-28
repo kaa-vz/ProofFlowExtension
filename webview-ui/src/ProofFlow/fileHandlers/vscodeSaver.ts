@@ -36,6 +36,7 @@ function addLoadFileListener(pf: ProofFlow) {
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.command === "loadFile") {
+      pf.reset()
       pf.setFileName(message.text);
       pf.openFile(
         message.content,
