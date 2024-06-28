@@ -390,6 +390,7 @@ export class ProofFlow {
    * @param fileType - The type of the file.
    */
   public async openFile(text: string, fileType: AcceptedFileType) {
+    console.log(fileType);
     this.hasFileOpen = true;
     this.fileType = fileType;
     text = text.replace(/\r/gi, ""); // Windows uses Carriage feeds but we don't like that.

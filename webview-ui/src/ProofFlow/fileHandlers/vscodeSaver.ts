@@ -36,11 +36,11 @@ function addLoadFileListener(pf: ProofFlow) {
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.command === "loadFile") {
+      pf.setFileName(message.text);
       pf.openFile(
         message.content,
         message.text.split(".").pop() as AcceptedFileType,
       );
-      pf.setFileName(message.text);
       console.log("Loaded file: ", message.text.split(".").pop() as AcceptedFileType)
     }
   });
