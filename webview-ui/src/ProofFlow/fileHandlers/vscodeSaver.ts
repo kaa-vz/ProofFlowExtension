@@ -40,6 +40,8 @@ function addLoadFileListener(pf: ProofFlow) {
         message.content,
         message.text.split(".").pop() as AcceptedFileType,
       );
+      pf.setFileName(message.text);
+      console.log("Loaded file: ", message.text.split(".").pop() as AcceptedFileType)
     }
   });
 }

@@ -137,7 +137,7 @@ export class EditorPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProofFlow</title>
   <style id="dynamic-styles"></style>
-  <script type="module" crossorigin src="/assets/index-5VQtafZS.js"></script>
+  <script type="module" crossorigin src="/assets/index-YrOgiP25.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-CmsPUGgR.css">
 </head>
 
@@ -147,7 +147,6 @@ export class EditorPanel {
 </body>
 
 </html>
-
 
 `;
     const adaptedHtml = html.replaceAll('href="/assets/', `href="${preset}/assets/`).replaceAll('src="/assets/', `src="${preset}/assets/`);
